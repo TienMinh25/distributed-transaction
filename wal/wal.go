@@ -16,7 +16,8 @@ var (
 type WAL interface {
 	Write(data []byte) error
 	CreateCheckpoint(data []byte) error
-	ReadAll(fromCheckpoint bool) ([]Entry, error)
+	ReadCurrentSegment(fromCheckpoint bool) ([]Entry, error)
+	Recover() ([]Entry, error)
 	Sync() error
 	Repair() ([]*Entry, error)
 	Close() error
@@ -28,6 +29,7 @@ type wal struct {
 	currentSegment *segment
 	opts           Options
 	lastSeq        uint64
+	segmentCount   int
 }
 
 func NewWAL(dir string, opts Options) (WAL, error) {
@@ -39,11 +41,13 @@ func NewWAL(dir string, opts Options) (WAL, error) {
 	if err != nil {
 		return nil, err
 	}
+	segmentCount := len(indexes)
 
 	var currentSegment *segment
 	// don't find out any segment file, create new one
-	if len(indexes) == 0 {
+	if segmentCount == 0 {
 		currentSegment, err = createSegment(dir, 0)
+		segmentCount = 1
 	} else {
 		currentSegment, err = openSegment(dir, indexes[len(indexes)-1])
 	}
@@ -55,6 +59,7 @@ func NewWAL(dir string, opts Options) (WAL, error) {
 		dir:            dir,
 		opts:           opts,
 		currentSegment: currentSegment,
+		segmentCount:   segmentCount,
 	}
 
 	// after initialize, we must recover the last sequence number
@@ -69,17 +74,9 @@ func NewWAL(dir string, opts Options) (WAL, error) {
 
 func (w *wal) recoverLastSequence(dir string, indexes []int) (uint64, error) {
 	for idx := len(indexes) - 1; idx >= 0; idx-- {
-		seg, err := openSegment(dir, indexes[idx])
+		entries, _, err := readSegment(segmentPath(dir, indexes[idx]))
 		if err != nil {
 			return 0, err
-		}
-		entries, _, err := seg.readAll()
-		closeErr := seg.close()
-		if err != nil {
-			return 0, err
-		}
-		if closeErr != nil {
-			return 0, closeErr
 		}
 		if len(entries) > 0 {
 			return entries[len(entries)-1].SequenceNumber, nil
@@ -146,12 +143,14 @@ func (w *wal) rotate() error {
 		return err
 	}
 	w.currentSegment = newSegment
+	w.segmentCount++
 
 	// drop old segment if exceed the w.opts.MaxSegments
-	if w.currentSegment.index+1 > w.opts.MaxSegments {
+	if w.segmentCount > w.opts.MaxSegments {
 		if errDel := w.deleteOldestSegment(); errDel != nil {
 			return errDel
 		}
+		w.segmentCount--
 	}
 
 	return nil
@@ -178,11 +177,11 @@ func (w *wal) CreateCheckpoint(data []byte) error {
 	return w.writeEntry(data, true)
 }
 
-func (w *wal) ReadAll(fromCheckpoint bool) ([]Entry, error) {
+func (w *wal) ReadCurrentSegment(fromCheckpoint bool) ([]Entry, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	entries, checkpointSeq, err := w.currentSegment.readAll()
+	entries, checkpointSeq, err := readSegment(w.currentSegment.file.Name())
 	if err != nil {
 		return entries, err
 	}
@@ -219,4 +218,8 @@ func (w *wal) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.currentSegment.close()
+}
+
+func (w *wal) Recover() ([]Entry, error) {
+	panic("implement me")
 }

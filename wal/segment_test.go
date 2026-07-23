@@ -41,7 +41,7 @@ func TestSegment(t *testing.T) {
 		err = seg.sync()
 		require.NoError(t, err)
 
-		entries, checkpointSeq, err := seg.readAll()
+		entries, checkpointSeq, err := readSegment(seg.file.Name())
 		require.NoError(t, err)
 		assert.Len(t, entries, 2)
 		assert.Equal(t, checkpointSeq, uint64(1))
@@ -67,7 +67,7 @@ func TestSegment(t *testing.T) {
 		err = seg.append(entry2)
 		require.NoError(t, err)
 
-		entries, _, err := seg.readAll()
+		entries, _, err := readSegment(seg.file.Name())
 		require.NoError(t, err)
 		assert.Len(t, entries, 0)
 	})

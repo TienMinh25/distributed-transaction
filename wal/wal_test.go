@@ -108,7 +108,7 @@ func TestWAL(t *testing.T) {
 		require.NoError(t, w2.Write([]byte("c")))
 		require.NoError(t, w2.Sync())
 
-		entries, err := w2.ReadAll(false)
+		entries, err := w2.ReadCurrentSegment(false)
 		require.NoError(t, err)
 		assert.Equal(t, uint64(3), entries[0].SequenceNumber)
 	})
@@ -130,7 +130,7 @@ func TestWAL(t *testing.T) {
 		require.NoError(t, w2.Write([]byte("b")))
 		require.NoError(t, w2.Sync())
 
-		entries, err := w2.ReadAll(false)
+		entries, err := w2.ReadCurrentSegment(false)
 		require.NoError(t, err)
 		assert.Len(t, entries, 2)
 		assert.Equal(t, uint64(2), entries[1].SequenceNumber)
@@ -155,7 +155,7 @@ func TestWAL(t *testing.T) {
 		wg.Wait()
 		require.NoError(t, w.Sync())
 
-		entries, err := w.ReadAll(false)
+		entries, err := w.ReadCurrentSegment(false)
 		require.NoError(t, err)
 		assert.Len(t, entries, 10)
 		for idx, entry := range entries {
@@ -211,7 +211,7 @@ func TestWAL(t *testing.T) {
 		require.NoError(t, w.Write([]byte("new-3")))
 		require.NoError(t, w.Sync())
 
-		entries, err := w.ReadAll(true)
+		entries, err := w.ReadCurrentSegment(true)
 		require.NoError(t, err)
 
 		assert.Len(t, entries, 4)
@@ -229,14 +229,13 @@ func TestWAL(t *testing.T) {
 		w := &wal{dir: dir, opts: Options{
 			MaxFileSize: maxFileSizeBytes,
 			MaxSegments: 1,
-		}, currentSegment: currentSegment}
+		}, currentSegment: currentSegment, segmentCount: 1}
 		defer func() {
 			require.NoError(t, w.Close())
 		}()
 
 		for {
 			require.NoError(t, w.Write([]byte("data")))
-
 			if w.currentSegment.index != currentSegment.index {
 				break
 			}

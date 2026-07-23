@@ -98,15 +98,15 @@ func (s *segment) sync() error {
 	return s.file.Sync()
 }
 
-// readAll return all entries in segment file and latest checkpoint sequence number
-func (s *segment) readAll() ([]Entry, uint64, error) {
-	fd, err := os.Open(s.file.Name())
+// readSegment return all entries in segment file and latest checkpoint sequence number
+func readSegment(path string) ([]Entry, uint64, error) {
+	fd, err := os.Open(path)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer func() {
 		if errClose := fd.Close(); errClose != nil {
-			fmt.Printf("Error closing file description when readAll: %s\n", errClose)
+			fmt.Printf("Error closing file description when readSegment: %s\n", errClose)
 		}
 	}()
 
