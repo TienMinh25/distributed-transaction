@@ -15,7 +15,9 @@ func TestEncodeDecodeEntry(t *testing.T) {
 			IsCheckpoint:   true,
 		}
 
-		encoded := encodeEntry(e)
+		encoded, err := encodeEntry(e)
+		require.NoError(t, err)
+
 		decoded, err := decodeEntry(encoded)
 
 		require.NoError(t, err)
@@ -31,10 +33,11 @@ func TestEncodeDecodeEntry(t *testing.T) {
 			IsCheckpoint:   true,
 		}
 
-		encoded := encodeEntry(e)
+		encoded, err := encodeEntry(e)
+		require.NoError(t, err)
 		encoded[len(encoded)-1] ^= 0xFF
 
-		_, err := decodeEntry(encoded)
+		_, err = decodeEntry(encoded)
 		assert.Equal(t, ErrCRCMismatch, err)
 	})
 
@@ -45,8 +48,19 @@ func TestEncodeDecodeEntry(t *testing.T) {
 		copy(original, []byte("hello"))
 		snapshot := append([]byte{}, original...)
 
-		_ = encodeEntry(Entry{SequenceNumber: 1, Data: original})
+		_, err := encodeEntry(Entry{SequenceNumber: 1, Data: original})
 
+		require.NoError(t, err)
 		assert.Equal(t, snapshot, original)
+	})
+
+	t.Run("truncated input fails cleanly", func(t *testing.T) {
+		e := Entry{SequenceNumber: 1, Data: []byte("hello world")}
+		encoded, err := encodeEntry(e)
+		require.NoError(t, err)
+
+		truncated := encoded[:len(encoded)-3]
+		_, err = decodeEntry(truncated)
+		assert.Equal(t, ErrTruncatedEntry, err)
 	})
 }

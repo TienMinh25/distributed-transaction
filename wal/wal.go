@@ -13,6 +13,8 @@ type Entry struct {
 var (
 	// ErrCRCMismatch denote the entry is corrupted
 	ErrCRCMismatch = errors.New("WAL: crc mismatch, entry corrupted")
+	// ErrTruncatedEntry signals that there are not enough bytes to decode a complete entry.
+	ErrTruncatedEntry = errors.New("wal: truncated entry")
 )
 
 type WAL interface {
