@@ -3,6 +3,7 @@ package wal
 import (
 	"errors"
 	"os"
+	"sync"
 )
 
 var (
@@ -13,15 +14,16 @@ var (
 )
 
 type WAL interface {
-	WriteEntry(data []byte) error
+	WriteEntry(data []byte, isCheckpoint bool) error
 	CreateCheckpoint(data []byte) error
-	ReadAll(fromCheckpoint bool) ([]*Entry, error)
+	ReadAll(fromCheckpoint bool) ([]Entry, error)
 	Sync() error
 	Repair() ([]*Entry, error)
 	Close() error
 }
 
 type wal struct {
+	mu             sync.Mutex
 	dir            string
 	currentSegment *segment
 	opts           Options
@@ -86,9 +88,86 @@ func (w *wal) recoverLastSequence(dir string, indexes []int) (uint64, error) {
 	return 0, nil
 }
 
-func (w *wal) WriteEntry(data []byte) error {
-	//TODO implement me
-	panic("implement me")
+func (w *wal) WriteEntry(data []byte, isCheckpoint bool) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	entry := Entry{
+		SequenceNumber: w.lastSeq + 1,
+		Data:           data,
+		IsCheckpoint:   isCheckpoint,
+	}
+	encoded, err := encodeEntry(entry)
+	if err != nil {
+		return err
+	}
+
+	if err = w.rotateIfNeeded(int64(len(encoded) + 4)); err != nil {
+		return err
+	}
+
+	err = w.currentSegment.append(encoded)
+	if err != nil {
+		return err
+	}
+
+	w.lastSeq++
+	return nil
+}
+
+func (w *wal) rotateIfNeeded(recordSize int64) error {
+	size, err := w.currentSegment.size()
+	if err != nil {
+		return err
+	}
+
+	if w.opts.MaxFileSize > size+recordSize {
+		return nil
+	}
+
+	return w.rotate()
+}
+
+func (w *wal) rotate() error {
+	if err := w.currentSegment.sync(); err != nil {
+		return err
+	}
+	if err := w.currentSegment.close(); err != nil {
+		return err
+	}
+
+	// create new segment
+	newSegment, err := createSegment(w.dir, w.currentSegment.index+1)
+	if err != nil {
+		return err
+	}
+	w.currentSegment = newSegment
+
+	// drop old segment if exceed the w.opts.MaxSegments
+	if w.currentSegment.index > w.opts.MaxSegments {
+		if errDel := w.deleteOldestSegment(); errDel != nil {
+			return errDel
+		}
+	}
+
+	return nil
+}
+
+func (w *wal) deleteOldestSegment() error {
+	indexes, err := listSegmentIndexes(w.dir)
+	if err != nil {
+		return err
+	}
+
+	if len(indexes) == 0 {
+		return nil
+	}
+
+	if err = os.Remove(segmentPath(w.dir, indexes[0])); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (w *wal) CreateCheckpoint(data []byte) error {
@@ -96,14 +175,35 @@ func (w *wal) CreateCheckpoint(data []byte) error {
 	panic("implement me")
 }
 
-func (w *wal) ReadAll(fromCheckpoint bool) ([]*Entry, error) {
-	//TODO implement me
-	panic("implement me")
+func (w *wal) ReadAll(fromCheckpoint bool) ([]Entry, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	entries, checkpointSeq, err := w.currentSegment.readAll()
+	if err != nil {
+		return entries, err
+	}
+
+	if !fromCheckpoint || checkpointSeq == 0 {
+		return entries, nil
+	}
+
+	idxCheckpoint := 0
+	for ; idxCheckpoint < len(entries); idxCheckpoint++ {
+		if entries[idxCheckpoint].SequenceNumber == checkpointSeq && entries[idxCheckpoint].IsCheckpoint {
+			break
+		}
+	}
+
+	result := make([]Entry, len(entries[idxCheckpoint:]))
+	copy(result, entries[idxCheckpoint:])
+	return result, nil
 }
 
 func (w *wal) Sync() error {
-	//TODO implement me
-	panic("implement me")
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.currentSegment.sync()
 }
 
 func (w *wal) Repair() ([]*Entry, error) {
@@ -112,5 +212,7 @@ func (w *wal) Repair() ([]*Entry, error) {
 }
 
 func (w *wal) Close() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	return w.currentSegment.close()
 }

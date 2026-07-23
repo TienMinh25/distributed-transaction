@@ -9,4 +9,11 @@ type Entry struct {
 }
 
 type Options struct {
+	MaxFileSize int64
+	MaxSegments int
+}
+
+var DefaultOptions = Options{
+	MaxFileSize: 64 * 1024 * 1024,
+	MaxSegments: 1000,
 }

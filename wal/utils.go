@@ -97,7 +97,11 @@ func listSegmentIndexes(dir string) ([]int, error) {
 
 	indexes := make([]int, 0, len(files))
 	for _, f := range files {
-		idxStr := strings.Trim(f, filepath.Join(dir, SEGMENT_PREFIX))
+		base := filepath.Base(f)
+		idxStr := strings.TrimSuffix(
+			strings.TrimPrefix(base, SEGMENT_PREFIX),
+			".wal",
+		)
 		idx, err := strconv.Atoi(idxStr)
 		if err != nil {
 			return nil, err

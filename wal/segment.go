@@ -62,16 +62,11 @@ func openSegment(dir string, index int) (*segment, error) {
 
 // append add entry to the buffer (it's not write to file yet, if you need to write file immediately, use sync() func)
 // the record will be written like format: length-prefix of entry + entry
-func (s *segment) append(e Entry) error {
-	encoded, err := encodeEntry(e)
-	if err != nil {
+func (s *segment) append(encoded []byte) error {
+	if err := binary.Write(s.bufWriter, binary.LittleEndian, uint32(len(encoded))); err != nil {
 		return err
 	}
-
-	if err = binary.Write(s.bufWriter, binary.LittleEndian, uint32(len(encoded))); err != nil {
-		return err
-	}
-	_, err = s.bufWriter.Write(encoded)
+	_, err := s.bufWriter.Write(encoded)
 
 	return err
 }
@@ -109,7 +104,11 @@ func (s *segment) readAll() ([]Entry, uint64, error) {
 	if err != nil {
 		return nil, 0, err
 	}
-	defer fd.Close()
+	defer func() {
+		if errClose := fd.Close(); errClose != nil {
+			fmt.Printf("Error closing file description when readAll: %s\n", errClose)
+		}
+	}()
 
 	entries := make([]Entry, 0)
 	var checkpointSeq uint64

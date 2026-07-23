@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -72,7 +73,7 @@ func TestWAL(t *testing.T) {
 	// new wal -> directory -> created, segment if not exist -> create
 	t.Run("create first segment when NewWAL in empty directory", func(t *testing.T) {
 		dir := t.TempDir()
-		goWal, err := NewWAL(dir, Options{})
+		goWal, err := NewWAL(dir, DefaultOptions)
 		require.NoError(t, err)
 
 		defer func() {
@@ -83,11 +84,116 @@ func TestWAL(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	// if write concurrent -> no co hoat dong ko
+	t.Run("recover latest LSN when last segment file is empty", func(t *testing.T) {
+		dir := t.TempDir()
 
-	// if write -> cai lsn (log sequence number) co hoat dong dung ko hay bi race condition
+		w, err := NewWAL(dir, DefaultOptions)
+		require.NoError(t, err)
+		require.NoError(t, w.WriteEntry([]byte("a"), false))
+		require.NoError(t, w.WriteEntry([]byte("b"), false))
+		require.NoError(t, w.Sync())
+		require.NoError(t, w.Close())
 
-	// recover -> tim dc thang checkpoint moi nhat cua lsn, de replay events
+		// mock the rotation for segment file
+		emptySeg, err := os.Create(segmentPath(dir, 1))
+		require.NoError(t, err)
+		require.NoError(t, emptySeg.Close())
+
+		w2, err := NewWAL(dir, DefaultOptions)
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, w2.Close())
+		}()
+
+		require.NoError(t, w2.WriteEntry([]byte("c"), false))
+		require.NoError(t, w2.Sync())
+
+		entries, err := w2.ReadAll(false)
+		require.NoError(t, err)
+		assert.Equal(t, uint64(3), entries[0].SequenceNumber)
+	})
+
+	t.Run("recover LSN in normal case", func(t *testing.T) {
+		dir := t.TempDir()
+		w, err := NewWAL(dir, DefaultOptions)
+		require.NoError(t, err)
+		require.NoError(t, w.WriteEntry([]byte("a"), false))
+		require.NoError(t, w.Sync())
+		require.NoError(t, w.Close())
+
+		w2, err := NewWAL(dir, DefaultOptions)
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, w2.Close())
+		}()
+
+		require.NoError(t, w2.WriteEntry([]byte("b"), false))
+		require.NoError(t, w2.Sync())
+
+		entries, err := w2.ReadAll(false)
+		require.NoError(t, err)
+		assert.Len(t, entries, 2)
+		assert.Equal(t, uint64(2), entries[1].SequenceNumber)
+	})
+
+	t.Run("concurrent write -> must thread safe about the lsn", func(t *testing.T) {
+		dir := t.TempDir()
+		w, err := NewWAL(dir, DefaultOptions)
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, w.Close())
+		}()
+		wg := sync.WaitGroup{}
+
+		for i := 0; i < 10; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				require.NoError(t, w.WriteEntry([]byte(fmt.Sprintf("data-%d", i)), false))
+			}()
+		}
+		wg.Wait()
+		require.NoError(t, w.Sync())
+
+		entries, err := w.ReadAll(false)
+		require.NoError(t, err)
+		assert.Len(t, entries, 10)
+		for idx, entry := range entries {
+			assert.Equal(t, entry.SequenceNumber, uint64(idx+1))
+		}
+	})
+
+	t.Run("create new segment when reach to the end size of segment", func(t *testing.T) {
+		dir := t.TempDir()
+		maxFileSizeBytes := int64(100)
+		currentSegment, err := createSegment(dir, 0)
+		require.NoError(t, err)
+		w := &wal{dir: dir, opts: Options{
+			MaxFileSize: maxFileSizeBytes,
+			MaxSegments: 1000,
+		}, currentSegment: currentSegment}
+		defer func() {
+			require.NoError(t, w.Close())
+		}()
+
+		for {
+			require.NoError(t, w.WriteEntry([]byte("data"), false))
+			entries, errDir := os.ReadDir(dir)
+			require.NoError(t, errDir)
+
+			currentSize, errSize := w.currentSegment.size()
+			require.NoError(t, errSize)
+			if currentSize > maxFileSizeBytes {
+				t.Fatal("segment is too large but still not create new segment")
+			}
+
+			if len(entries) == 2 {
+				assert.Equal(t, "segment-0.wal", entries[0].Name())
+				assert.Equal(t, "segment-1.wal", entries[1].Name())
+				break
+			}
+		}
+	})
 
 	// to be able to create checkpoint by inserting new record in WAL
 

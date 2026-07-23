@@ -24,15 +24,18 @@ func TestSegment(t *testing.T) {
 		require.NoError(t, err)
 		defer seg.close()
 
-		err = seg.append(Entry{
+		entry1, _ := encodeEntry(Entry{
 			SequenceNumber: 1,
 			Data:           []byte("data"),
 			IsCheckpoint:   true,
 		})
-		err = seg.append(Entry{
+		entry2, _ := encodeEntry(Entry{
 			SequenceNumber: 2,
 			Data:           []byte("data"),
 		})
+
+		err = seg.append(entry1)
+		err = seg.append(entry2)
 		require.NoError(t, err)
 
 		err = seg.sync()
@@ -51,15 +54,17 @@ func TestSegment(t *testing.T) {
 		require.NoError(t, err)
 		defer seg.close()
 
-		err = seg.append(Entry{
+		entry, _ := encodeEntry(Entry{
 			SequenceNumber: 1,
 			Data:           []byte("data"),
-			IsCheckpoint:   true,
 		})
-		err = seg.append(Entry{
+		entry2, _ := encodeEntry(Entry{
 			SequenceNumber: 2,
 			Data:           []byte("data"),
 		})
+
+		err = seg.append(entry)
+		err = seg.append(entry2)
 		require.NoError(t, err)
 
 		entries, _, err := seg.readAll()
@@ -75,25 +80,28 @@ func TestSegment(t *testing.T) {
 		segSize, err := seg.size()
 		require.NoError(t, err)
 		assert.Equal(t, int64(0), segSize)
-
-		err = seg.append(Entry{
+		entry, _ := encodeEntry(Entry{
 			SequenceNumber: 1,
 			Data:           []byte("data"),
 			IsCheckpoint:   true,
 		})
-		err = seg.append(Entry{
+		entry2, _ := encodeEntry(Entry{
 			SequenceNumber: 2,
 			Data:           []byte("data"),
 		})
+
+		err = seg.append(entry)
+		err = seg.append(entry2)
 		require.NoError(t, err)
 
 		err = seg.sync()
 		require.NoError(t, err)
 
-		err = seg.append(Entry{
+		entry3, _ := encodeEntry(Entry{
 			SequenceNumber: 3,
 			Data:           []byte("data"),
 		})
+		err = seg.append(entry3)
 
 		segSize, err = seg.size()
 		require.NoError(t, err)
