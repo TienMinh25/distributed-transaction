@@ -1,6 +1,9 @@
 package wal
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -63,4 +66,30 @@ func TestEncodeDecodeEntry(t *testing.T) {
 		_, err = decodeEntry(truncated)
 		assert.Equal(t, ErrTruncatedEntry, err)
 	})
+}
+
+func TestWAL(t *testing.T) {
+	// new wal -> directory -> created, segment if not exist -> create
+	t.Run("create first segment when NewWAL in empty directory", func(t *testing.T) {
+		dir := t.TempDir()
+		goWal, err := NewWAL(dir, Options{})
+		require.NoError(t, err)
+
+		defer func() {
+			require.NoError(t, goWal.Close())
+		}()
+		path := filepath.Join(dir, fmt.Sprintf("%s%d.wal", SEGMENT_PREFIX, 0))
+		_, err = os.Stat(path)
+		require.NoError(t, err)
+	})
+
+	// if write concurrent -> no co hoat dong ko
+
+	// if write -> cai lsn (log sequence number) co hoat dong dung ko hay bi race condition
+
+	// recover -> tim dc thang checkpoint moi nhat cua lsn, de replay events
+
+	// to be able to create checkpoint by inserting new record in WAL
+
+	// case test read all should skips all entries before checkpoint
 }

@@ -41,9 +41,9 @@ func createSegment(dir string, index int) (*segment, error) {
 }
 
 // openSegment open one file in mode append and already seek to the end file
-func (s *segment) openSegment(dir string, index int) (*segment, error) {
+func openSegment(dir string, index int) (*segment, error) {
 	path := segmentPath(dir, index)
-	fd, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	fd, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		return nil, err
 	}

@@ -4,6 +4,10 @@ import (
 	"bytes"
 	"encoding/binary"
 	"hash/crc32"
+	"path/filepath"
+	"slices"
+	"strconv"
+	"strings"
 )
 
 /*
@@ -83,4 +87,24 @@ func decodeEntry(data []byte) (Entry, error) {
 		Data:           dataCopy,
 		CRC:            storedCrc,
 	}, nil
+}
+
+func listSegmentIndexes(dir string) ([]int, error) {
+	files, err := filepath.Glob(filepath.Join(dir, SEGMENT_PREFIX+"*"))
+	if err != nil {
+		return nil, err
+	}
+
+	indexes := make([]int, 0, len(files))
+	for _, f := range files {
+		idxStr := strings.Trim(f, filepath.Join(dir, SEGMENT_PREFIX))
+		idx, err := strconv.Atoi(idxStr)
+		if err != nil {
+			return nil, err
+		}
+		indexes = append(indexes, idx)
+	}
+
+	slices.Sort(indexes)
+	return indexes, nil
 }
