@@ -89,8 +89,8 @@ func TestWAL(t *testing.T) {
 
 		w, err := NewWAL(dir, DefaultOptions)
 		require.NoError(t, err)
-		require.NoError(t, w.WriteEntry([]byte("a"), false))
-		require.NoError(t, w.WriteEntry([]byte("b"), false))
+		require.NoError(t, w.Write([]byte("a")))
+		require.NoError(t, w.Write([]byte("b")))
 		require.NoError(t, w.Sync())
 		require.NoError(t, w.Close())
 
@@ -105,7 +105,7 @@ func TestWAL(t *testing.T) {
 			require.NoError(t, w2.Close())
 		}()
 
-		require.NoError(t, w2.WriteEntry([]byte("c"), false))
+		require.NoError(t, w2.Write([]byte("c")))
 		require.NoError(t, w2.Sync())
 
 		entries, err := w2.ReadAll(false)
@@ -117,7 +117,7 @@ func TestWAL(t *testing.T) {
 		dir := t.TempDir()
 		w, err := NewWAL(dir, DefaultOptions)
 		require.NoError(t, err)
-		require.NoError(t, w.WriteEntry([]byte("a"), false))
+		require.NoError(t, w.Write([]byte("a")))
 		require.NoError(t, w.Sync())
 		require.NoError(t, w.Close())
 
@@ -127,7 +127,7 @@ func TestWAL(t *testing.T) {
 			require.NoError(t, w2.Close())
 		}()
 
-		require.NoError(t, w2.WriteEntry([]byte("b"), false))
+		require.NoError(t, w2.Write([]byte("b")))
 		require.NoError(t, w2.Sync())
 
 		entries, err := w2.ReadAll(false)
@@ -149,7 +149,7 @@ func TestWAL(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				require.NoError(t, w.WriteEntry([]byte(fmt.Sprintf("data-%d", i)), false))
+				require.NoError(t, w.Write([]byte(fmt.Sprintf("data-%d", i))))
 			}()
 		}
 		wg.Wait()
@@ -177,7 +177,7 @@ func TestWAL(t *testing.T) {
 		}()
 
 		for {
-			require.NoError(t, w.WriteEntry([]byte("data"), false))
+			require.NoError(t, w.Write([]byte("data")))
 			entries, errDir := os.ReadDir(dir)
 			require.NoError(t, errDir)
 
@@ -195,7 +195,29 @@ func TestWAL(t *testing.T) {
 		}
 	})
 
-	// to be able to create checkpoint by inserting new record in WAL
+	t.Run("skip record before checkpoint", func(t *testing.T) {
+		dir := t.TempDir()
+		w, err := NewWAL(dir, DefaultOptions)
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, w.Close())
+		}()
 
-	// case test read all should skips all entries before checkpoint
+		require.NoError(t, w.Write([]byte("old-1")))
+		require.NoError(t, w.Write([]byte("old-2")))
+		require.NoError(t, w.CreateCheckpoint([]byte("snapshot")))
+		require.NoError(t, w.Write([]byte("new-1")))
+		require.NoError(t, w.Write([]byte("new-2")))
+		require.NoError(t, w.Write([]byte("new-3")))
+		require.NoError(t, w.Sync())
+
+		entries, err := w.ReadAll(true)
+		require.NoError(t, err)
+
+		assert.Len(t, entries, 4)
+		assert.Equal(t, uint64(3), entries[0].SequenceNumber)
+		assert.Equal(t, uint64(4), entries[1].SequenceNumber)
+		assert.Equal(t, uint64(5), entries[2].SequenceNumber)
+		assert.Equal(t, uint64(6), entries[3].SequenceNumber)
+	})
 }

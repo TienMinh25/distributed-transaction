@@ -14,7 +14,7 @@ var (
 )
 
 type WAL interface {
-	WriteEntry(data []byte, isCheckpoint bool) error
+	Write(data []byte) error
 	CreateCheckpoint(data []byte) error
 	ReadAll(fromCheckpoint bool) ([]Entry, error)
 	Sync() error
@@ -88,7 +88,11 @@ func (w *wal) recoverLastSequence(dir string, indexes []int) (uint64, error) {
 	return 0, nil
 }
 
-func (w *wal) WriteEntry(data []byte, isCheckpoint bool) error {
+func (w *wal) Write(data []byte) error {
+	return w.writeEntry(data, false)
+}
+
+func (w *wal) writeEntry(data []byte, isCheckpoint bool) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -171,8 +175,7 @@ func (w *wal) deleteOldestSegment() error {
 }
 
 func (w *wal) CreateCheckpoint(data []byte) error {
-	//TODO implement me
-	panic("implement me")
+	return w.writeEntry(data, true)
 }
 
 func (w *wal) ReadAll(fromCheckpoint bool) ([]Entry, error) {
@@ -206,6 +209,7 @@ func (w *wal) Sync() error {
 	return w.currentSegment.sync()
 }
 
+// TODO: Repair function should do after
 func (w *wal) Repair() ([]*Entry, error) {
 	//TODO implement me
 	panic("implement me")
