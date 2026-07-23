@@ -220,4 +220,31 @@ func TestWAL(t *testing.T) {
 		assert.Equal(t, uint64(5), entries[2].SequenceNumber)
 		assert.Equal(t, uint64(6), entries[3].SequenceNumber)
 	})
+
+	t.Run("delete oldest segment when max segment is reached", func(t *testing.T) {
+		dir := t.TempDir()
+		maxFileSizeBytes := int64(100)
+		currentSegment, err := createSegment(dir, 0)
+		require.NoError(t, err)
+		w := &wal{dir: dir, opts: Options{
+			MaxFileSize: maxFileSizeBytes,
+			MaxSegments: 1,
+		}, currentSegment: currentSegment}
+		defer func() {
+			require.NoError(t, w.Close())
+		}()
+
+		for {
+			require.NoError(t, w.Write([]byte("data")))
+
+			if w.currentSegment.index != currentSegment.index {
+				break
+			}
+		}
+
+		entries, errDir := os.ReadDir(dir)
+		require.NoError(t, errDir)
+		require.Len(t, entries, 1)
+		assert.Equal(t, "segment-1.wal", entries[0].Name())
+	})
 }

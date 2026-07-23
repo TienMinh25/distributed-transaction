@@ -148,7 +148,7 @@ func (w *wal) rotate() error {
 	w.currentSegment = newSegment
 
 	// drop old segment if exceed the w.opts.MaxSegments
-	if w.currentSegment.index > w.opts.MaxSegments {
+	if w.currentSegment.index+1 > w.opts.MaxSegments {
 		if errDel := w.deleteOldestSegment(); errDel != nil {
 			return errDel
 		}
