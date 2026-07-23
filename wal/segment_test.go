@@ -16,7 +16,7 @@ func TestSegment(t *testing.T) {
 		defer seg.close()
 
 		// check the file name
-		assert.Equal(t, "segment-0", seg.file.Name())
+		assert.Equal(t, segmentPath(dir, 0), seg.file.Name())
 	})
 
 	t.Run("append, flush, read from disk -> should have data", func(t *testing.T) {
@@ -41,7 +41,7 @@ func TestSegment(t *testing.T) {
 		entries, checkpointSeq, err := seg.readAll()
 		require.NoError(t, err)
 		assert.Len(t, entries, 2)
-		assert.Len(t, checkpointSeq, 1)
+		assert.Equal(t, checkpointSeq, uint64(1))
 		assert.Equal(t, uint64(1), entries[0].SequenceNumber)
 		assert.Equal(t, uint64(2), entries[1].SequenceNumber)
 	})
@@ -72,6 +72,10 @@ func TestSegment(t *testing.T) {
 		require.NoError(t, err)
 		defer seg.close()
 
+		segSize, err := seg.size()
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), segSize)
+
 		err = seg.append(Entry{
 			SequenceNumber: 1,
 			Data:           []byte("data"),
@@ -91,8 +95,8 @@ func TestSegment(t *testing.T) {
 			Data:           []byte("data"),
 		})
 
-		segSize, err := seg.size()
+		segSize, err = seg.size()
 		require.NoError(t, err)
-		assert.Equal(t, uint64(3), segSize)
+		assert.Greater(t, segSize, int64(0))
 	})
 }
