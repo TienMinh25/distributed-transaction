@@ -247,3 +247,44 @@ func TestWAL(t *testing.T) {
 		assert.Equal(t, "segment-1.wal", entries[0].Name())
 	})
 }
+
+func TestWALRecover(t *testing.T) {
+	t.Run("recover from multiple segments and latest checkpoint", func(t *testing.T) {
+		dir := t.TempDir()
+		maxFileSizeBytes := int64(100)
+		walGo, err := NewWAL(dir, Options{MaxFileSize: maxFileSizeBytes, MaxSegments: 100})
+		require.NoError(t, err)
+
+		defer func() {
+			require.NoError(t, walGo.Close())
+		}()
+
+		require.NoError(t, walGo.Write([]byte("old-1")))
+		require.NoError(t, walGo.Write([]byte("old-2")))
+		require.NoError(t, walGo.CreateCheckpoint([]byte("snapshot-1")))
+		require.NoError(t, walGo.Write([]byte("new-1")))
+		require.NoError(t, walGo.Write([]byte("new-2")))
+		require.NoError(t, walGo.CreateCheckpoint([]byte("snapshot-2")))
+		require.NoError(t, walGo.Write([]byte("new-3")))
+		require.NoError(t, walGo.Write([]byte("new-4")))
+		require.NoError(t, walGo.Write([]byte("new-5")))
+		require.NoError(t, walGo.Sync())
+
+		entries, err := walGo.Recover()
+		require.NoError(t, err)
+
+		assert.Len(t, entries, 4)
+		assert.True(t, entries[0].IsCheckpoint)
+		assert.Equal(t, []byte("snapshot-2"), entries[0].Data)
+
+		assert.False(t, entries[1].IsCheckpoint)
+		assert.Equal(t, []byte("new-3"), entries[1].Data)
+
+		assert.False(t, entries[2].IsCheckpoint)
+		assert.Equal(t, []byte("new-4"), entries[2].Data)
+
+		assert.False(t, entries[3].IsCheckpoint)
+		assert.Equal(t, []byte("new-5"), entries[3].Data)
+
+	})
+}

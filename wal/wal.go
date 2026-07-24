@@ -3,6 +3,7 @@ package wal
 import (
 	"errors"
 	"os"
+	"slices"
 	"sync"
 )
 
@@ -19,7 +20,6 @@ type WAL interface {
 	ReadCurrentSegment(fromCheckpoint bool) ([]Entry, error)
 	Recover() ([]Entry, error)
 	Sync() error
-	Repair() ([]*Entry, error)
 	Close() error
 }
 
@@ -208,12 +208,6 @@ func (w *wal) Sync() error {
 	return w.currentSegment.sync()
 }
 
-// TODO: Repair function should do after
-func (w *wal) Repair() ([]*Entry, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
 func (w *wal) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -221,5 +215,32 @@ func (w *wal) Close() error {
 }
 
 func (w *wal) Recover() ([]Entry, error) {
-	panic("implement me")
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	segIndexes, err := listSegmentIndexes(w.dir)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []Entry
+	found := false
+	for idx := len(segIndexes) - 1; idx >= 0 && !found; idx-- {
+		entries, _, errRead := readSegment(segmentPath(w.dir, segIndexes[idx]))
+		if errRead != nil {
+			return nil, errRead
+		}
+
+		for i := len(entries) - 1; i >= 0; i-- {
+			result = append(result, entries[i])
+
+			if entries[i].IsCheckpoint {
+				found = true
+				break
+			}
+		}
+	}
+
+	slices.Reverse(result)
+	return result, nil
 }
