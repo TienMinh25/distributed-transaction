@@ -10,9 +10,9 @@ import (
 )
 
 /*
-- we split the log file to many smaller log file (which is called segment)
+- we split the log file to many smaller log files (which is called segment)
 - we wanna improve write performance, so instead of writing directly data to disk and flush, we \
-will write it to in-memory buffer and flush these buffer to disk at set intervals.
+will write it to in-memory buffer and flush these buffer to disk (serve for caller to call flush).
 */
 type segment struct {
 	file      *os.File      // segment file
@@ -49,7 +49,9 @@ func openSegment(dir string, index int) (*segment, error) {
 	}
 
 	if _, err = fd.Seek(0, io.SeekEnd); err != nil {
-		fd.Close()
+		if closeErr := fd.Close(); closeErr != nil {
+			println("Failed to close segment:", closeErr.Error())
+		}
 		return nil, err
 	}
 
